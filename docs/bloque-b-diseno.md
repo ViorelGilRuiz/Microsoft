@@ -1,0 +1,9 @@
+# Bloque B: diseño del motor de evaluación
+
+Estado: diseño pendiente de implementación y de validación. No habilita escrituras ni cambia los permisos existentes.
+
+Cada intento debe fijar una revisión inmutable de cada pregunta, sus opciones y su clave de corrección. La revisión publicada, el orden de las opciones y la modalidad se fijarán al crear el intento; los cambios editoriales posteriores producirán otra revisión y no alterarán los resultados anteriores. Las claves, explicaciones reservadas y criterios de puntuación deben permanecer en un esquema privado no expuesto por PostgREST.
+
+El cliente enviará únicamente el identificador del intento, el identificador de pregunta, las opciones elegidas y una clave de idempotencia. Una operación transaccional autorizada en el servidor verificará la identidad, propiedad del intento, estado, pertenencia de la pregunta y opciones y versión. Bloqueará la fila del intento, resolverá duplicados de forma determinista y calculará el resultado con la clave privada. No aceptará una puntuación enviada por el navegador. En práctica devolverá la explicación tras corregir; en simulacro la mantendrá reservada hasta el envío definitivo.
+
+Antes de activarlo se necesitan migraciones para revisiones inmutables, selecciones múltiples, resultados, eventos de idempotencia y registros de repaso, con restricciones y permisos explícitos. Se requieren pruebas con sesiones reales para propietarios y terceros, acceso anónimo, claves ocultas, envío concurrente, reanudación, bloqueo del intento y aislamiento entre versiones. El flujo de revisión y publicación editorial también debe impedir exponer una clave antes de la corrección. La decisión de usar funciones SQL con privilegios elevados requiere revisión específica de `search_path`, permisos y autorización.
