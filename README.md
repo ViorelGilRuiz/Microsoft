@@ -6,12 +6,12 @@ Base en desarrollo para aprender certificaciones Microsoft. No está afiliada a 
 
 - Next.js App Router, TypeScript estricto, interfaz adaptable, tema claro/oscuro y catálogo AZ-900, SC-900 y AZ-104.
 - Acceso con correo y contraseña mediante Supabase cuando está configurado. El registro puede requerir confirmación por correo según la configuración del proyecto.
-- Migración inicial de contenido y datos privados con RLS. Las claves de respuestas viven en un esquema privado; los intentos todavía no se pueden escribir desde el cliente. **La migración no ha sido aplicada ni verificada contra una instancia de Supabase.** La pregunta local de demostración contiene su respuesta en el código cliente y no constituye el motor seguro de evaluación previsto.
+- Migraciones iniciales de contenido y datos privados con RLS. Las claves de respuestas viven en un esquema privado; los intentos todavía no se pueden escribir desde el cliente. **Las migraciones no han sido aplicadas ni verificadas contra una instancia de Supabase.** La pregunta de demostración se corrige con una acción de servidor y no constituye el motor de evaluación previsto.
 - Manifest e icono SVG iniciales. Faltan iconos PNG para instalación compatible con iOS y pruebas de instalación; no existe soporte offline.
 
 ## Desarrollo
 
-Requiere Node.js compatible con Next.js y npm. En PowerShell:
+Requiere Node.js 22.18 o posterior y npm. En PowerShell:
 
 ```powershell
 npm.cmd ci
@@ -20,9 +20,9 @@ Copy-Item .env.example .env.local
 npm.cmd run dev
 ```
 
-Abre <http://localhost:3000>. Sin variables de entorno la demostración funciona, pero no la autenticación. Nunca incluyas la clave `service_role` en el cliente. Para usar la migración, revisa y aplica `supabase/migrations/202611220001_initial.sql` con las herramientas de Supabase antes de activar funcionalidades dependientes. No contiene datos iniciales.
+Abre <http://localhost:3000>. Sin variables de entorno la demostración funciona, pero no la autenticación. Nunca incluyas la clave `service_role` en el cliente. Para usar la base de datos, revisa y aplica las migraciones de `supabase/migrations/` en orden con las herramientas de Supabase antes de activar funcionalidades dependientes. No contienen datos iniciales.
 
-Comprueba con `npm.cmd run typecheck` y `npm.cmd run build`. Para probar en un móvil de la misma red, ejecuta `npm.cmd run dev -- --hostname 0.0.0.0` y abre `http://IP_DEL_ORDENADOR:3000` en el móvil. La instalación PWA y algunos servicios requieren HTTPS; para producción configura las dos variables públicas en Vercel y despliega el repositorio.
+Comprueba con `npm.cmd run typecheck`, `npm.cmd test` y `npm.cmd run build`. Para probar en un móvil de la misma red, ejecuta `npm.cmd run dev -- --hostname 0.0.0.0` y abre `http://IP_DEL_ORDENADOR:3000` en el móvil. La instalación PWA y algunos servicios requieren HTTPS; para producción configura las dos variables públicas en Vercel y despliega el repositorio.
 
 ## Trabajo pendiente
 
