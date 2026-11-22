@@ -1,0 +1,54 @@
+-- Initial foundation. No content is published by this migration.
+create extension if not exists pgcrypto;
+create schema if not exists private;
+revoke all on schema private from public, anon, authenticated;
+
+create table public.profiles (id uuid primary key references auth.users(id) on delete cascade, display_name text, target_certification text, theme text not null default 'dark' check(theme in ('dark','light','system')), language text not null default 'es', preferences jsonb not null default '{}', created_at timestamptz not null default now());
+create table public.certifications (id uuid primary key default gen_random_uuid(), code text not null unique, title text not null, official_url text not null, estimated_minutes integer check(estimated_minutes > 0));
+create table public.certification_versions (id uuid primary key default gen_random_uuid(), certification_id uuid not null references public.certifications on delete cascade, label text not null, effective_date date, verified_at date, source_url text not null, unique(certification_id,label));
+create table public.exam_domains (id uuid primary key default gen_random_uuid(), version_id uuid not null references public.certification_versions on delete cascade, title text not null, sort_order integer not null default 0);
+create table public.exam_objectives (id uuid primary key default gen_random_uuid(), domain_id uuid not null references public.exam_domains on delete cascade, title text not null);
+create table public.lessons (id uuid primary key default gen_random_uuid(), domain_id uuid not null references public.exam_domains on delete cascade, code text not null, title text not null, content jsonb not null default '{}', estimated_minutes integer check(estimated_minutes > 0), published boolean not null default false, unique(domain_id,code));
+create table public.lesson_objectives (lesson_id uuid references public.lessons on delete cascade, objective_id uuid references public.exam_objectives on delete cascade, primary key(lesson_id,objective_id));
+create table public.flashcards (id uuid primary key default gen_random_uuid(), lesson_id uuid not null references public.lessons on delete cascade, front text not null, back text not null, published boolean not null default false);
+create table public.questions (id uuid primary key default gen_random_uuid(), domain_id uuid not null references public.exam_domains on delete cascade, prompt text not null, difficulty text not null, question_type text not null default 'single_choice', source_url text not null, editorial_status text not null default 'draft' check(editorial_status in ('draft','reviewed','published')), updated_at timestamptz not null default now());
+create table public.question_options (id uuid primary key default gen_random_uuid(), question_id uuid not null references public.questions on delete cascade, option_text text not null, sort_order integer not null, unique(question_id,sort_order));
+-- Correct answers and explanations are deliberately inaccessible from the browser.
+create table private.question_keys (question_id uuid primary key references public.questions on delete cascade, correct_option_id uuid not null references public.question_options, explanations jsonb not null);
+create table public.question_objectives (question_id uuid references public.questions on delete cascade, objective_id uuid references public.exam_objectives on delete cascade, primary key(question_id,objective_id));
+create table public.quiz_attempts (id uuid primary key default gen_random_uuid(), user_id uuid not null references auth.users on delete cascade, status text not null default 'in_progress' check(status in ('in_progress','submitted')), started_at timestamptz not null default now(), submitted_at timestamptz);
+create table public.quiz_attempt_questions (attempt_id uuid references public.quiz_attempts on delete cascade, question_id uuid references public.questions, sort_order integer not null, primary key(attempt_id,question_id));
+create table public.user_answers (attempt_id uuid not null, question_id uuid not null, option_id uuid not null references public.question_options, primary key(attempt_id,question_id), foreign key(attempt_id,question_id) references public.quiz_attempt_questions on delete cascade);
+create table public.user_lesson_progress (user_id uuid references auth.users on delete cascade, lesson_id uuid references public.lessons on delete cascade, completed_at timestamptz, primary key(user_id,lesson_id));
+create table public.user_concept_mastery (user_id uuid references auth.users on delete cascade, objective_id uuid references public.exam_objectives on delete cascade, mastery numeric not null default 0 check(mastery between 0 and 1), primary key(user_id,objective_id));
+create table public.review_schedule (id uuid primary key default gen_random_uuid(), user_id uuid not null references auth.users on delete cascade, objective_id uuid not null references public.exam_objectives on delete cascade, due_at timestamptz not null, last_reviewed_at timestamptz, interval_minutes integer not null default 0, attempts integer not null default 0, unique(user_id,objective_id));
+create table public.study_plans (id uuid primary key default gen_random_uuid(), user_id uuid not null references auth.users on delete cascade, version_id uuid not null references public.certification_versions, start_date date not null, settings jsonb not null default '{}');
+create table public.study_plan_sessions (id uuid primary key default gen_random_uuid(), plan_id uuid not null references public.study_plans on delete cascade, scheduled_for date not null, activities jsonb not null default '[]', completed_at timestamptz);
+create table public.user_achievements (user_id uuid references auth.users on delete cascade, achievement_code text not null, earned_at timestamptz not null default now(), primary key(user_id,achievement_code));
+create table public.content_revisions (id uuid primary key default gen_random_uuid(), entity_type text not null, entity_id uuid not null, revision_note text not null, created_at timestamptz not null default now());
+create index on public.exam_domains(version_id); create index on public.exam_objectives(domain_id); create index on public.lessons(domain_id); create index on public.questions(domain_id); create index on public.question_options(question_id); create index on public.quiz_attempts(user_id,started_at desc); create index on public.review_schedule(user_id,due_at); create index on public.study_plan_sessions(plan_id,scheduled_for);
+
+alter table public.profiles enable row level security;
+create policy own_profile on public.profiles for all to authenticated using (id=auth.uid()) with check (id=auth.uid());
+-- Content is read-only to users; unpublished learning material stays private.
+alter table public.certifications enable row level security; create policy read_certifications on public.certifications for select to anon, authenticated using (true);
+alter table public.certification_versions enable row level security; create policy read_versions on public.certification_versions for select to anon, authenticated using (true);
+alter table public.exam_domains enable row level security; create policy read_domains on public.exam_domains for select to anon, authenticated using (true);
+alter table public.exam_objectives enable row level security; create policy read_objectives on public.exam_objectives for select to anon, authenticated using (true);
+alter table public.lessons enable row level security; create policy read_lessons on public.lessons for select to anon, authenticated using (published);
+alter table public.lesson_objectives enable row level security; create policy read_lesson_objectives on public.lesson_objectives for select to anon, authenticated using (exists(select 1 from public.lessons l where l.id=lesson_id and l.published));
+alter table public.flashcards enable row level security; create policy read_flashcards on public.flashcards for select to anon, authenticated using (published and exists(select 1 from public.lessons l where l.id=lesson_id and l.published));
+alter table public.questions enable row level security; create policy read_questions on public.questions for select to authenticated using (editorial_status='published');
+alter table public.question_options enable row level security; create policy read_options on public.question_options for select to authenticated using (exists(select 1 from public.questions q where q.id=question_id and q.editorial_status='published'));
+alter table public.question_objectives enable row level security; create policy read_question_objectives on public.question_objectives for select to authenticated using (exists(select 1 from public.questions q where q.id=question_id and q.editorial_status='published'));
+-- Attempts are read-only until a server-side transactional submission API is implemented.
+alter table public.quiz_attempts enable row level security; create policy read_own_attempts on public.quiz_attempts for select to authenticated using (user_id=auth.uid());
+alter table public.quiz_attempt_questions enable row level security; create policy read_own_attempt_questions on public.quiz_attempt_questions for select to authenticated using (exists(select 1 from public.quiz_attempts a where a.id=attempt_id and a.user_id=auth.uid()));
+alter table public.user_answers enable row level security; create policy read_own_answers on public.user_answers for select to authenticated using (exists(select 1 from public.quiz_attempts a where a.id=attempt_id and a.user_id=auth.uid()));
+alter table public.user_lesson_progress enable row level security; create policy own_lesson_progress on public.user_lesson_progress for all to authenticated using(user_id=auth.uid()) with check(user_id=auth.uid());
+alter table public.user_concept_mastery enable row level security; create policy read_own_mastery on public.user_concept_mastery for select to authenticated using(user_id=auth.uid());
+alter table public.review_schedule enable row level security; create policy read_own_reviews on public.review_schedule for select to authenticated using(user_id=auth.uid());
+alter table public.study_plans enable row level security; create policy own_plans on public.study_plans for all to authenticated using(user_id=auth.uid()) with check(user_id=auth.uid());
+alter table public.study_plan_sessions enable row level security; create policy own_sessions on public.study_plan_sessions for all to authenticated using(exists(select 1 from public.study_plans p where p.id=plan_id and p.user_id=auth.uid())) with check(exists(select 1 from public.study_plans p where p.id=plan_id and p.user_id=auth.uid()));
+alter table public.user_achievements enable row level security; create policy read_own_achievements on public.user_achievements for select to authenticated using(user_id=auth.uid());
+alter table public.content_revisions enable row level security;
